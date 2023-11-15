@@ -19,6 +19,7 @@
 #include "explorer/ast/statement.h"
 #include "explorer/ast/value.h"
 #include "explorer/base/nonnull.h"
+#include "explorer/base/source_location.h"
 #include "explorer/base/trace_stream.h"
 #include "explorer/interpreter/builtins.h"
 #include "explorer/interpreter/dictionary.h"
@@ -69,19 +70,21 @@ class TypeChecker {
   // Construct a value that is the same as `value` except that occurrences
   // of generic parameters (aka. `GenericBinding` and references to
   // `ImplBinding`) are replaced by their corresponding value or witness in
-  // `bindings`.
-  auto Substitute(const Bindings& bindings, Nonnull<const Value*> value) const
+  // `bindings`. The given `source_loc` is where the substitution is taking
+  // place.
+  auto Substitute(SourceLocation source_loc, const Bindings& bindings,
+                  Nonnull<const Value*> value) const
       -> ErrorOr<Nonnull<const Value*>>;
 
   // Same as `Substitute`, but cast the result to the type given as a template
   // argument, which must be explicitly specified. The `remove_cv_t` here
   // blocks template argument deduction.
   template <typename T>
-  auto SubstituteCast(const Bindings& bindings,
+  auto SubstituteCast(SourceLocation source_loc, const Bindings& bindings,
                       Nonnull<const std::remove_cv_t<T>*> value) const
       -> ErrorOr<Nonnull<const T*>> {
     CARBON_ASSIGN_OR_RETURN(Nonnull<const Value*> subst_value,
-                            Substitute(bindings, value));
+                            Substitute(source_loc, bindings, value));
     return llvm::cast<T>(subst_value);
   }
 
@@ -471,12 +474,13 @@ class TypeChecker {
   // Rebuild a value in the current type-checking context. Applies any rewrites
   // that are in scope and attempts to resolve associated constants using
   // implementations that have been declared since the value was formed.
-  auto RebuildValue(Nonnull<const Value*> value) const
+  auto RebuildValue(SourceLocation source_loc,
+                    Nonnull<const Value*> value) const
       -> ErrorOr<Nonnull<const Value*>>;
 
   // Implementation of Substitute and RebuildValue. Does not check that
   // bindings are nonempty, nor does it trace its progress.
-  auto SubstituteImpl(const Bindings& bindings,
+  auto SubstituteImpl(SourceLocation source_loc, const Bindings& bindings,
                       Nonnull<const Value*> type) const
       -> ErrorOr<Nonnull<const Value*>>;
 
@@ -556,7 +560,8 @@ class TypeChecker {
 
   // Instantiate an impl with the given set of bindings, including one or more
   // template bindings.
-  auto InstantiateImplDeclaration(Nonnull<const ImplDeclaration*> pattern,
+  auto InstantiateImplDeclaration(SourceLocation source_loc,
+                                  Nonnull<const ImplDeclaration*> pattern,
                                   Nonnull<const Bindings*> bindings) const
       -> ErrorOr<Nonnull<const ImplWitness*>>;
 
@@ -587,8 +592,8 @@ class TypeChecker {
 
   // A set of implementations we're currently matching.
   // TODO: This is `mutable` because `MatchImpl` is `const`. We need to remove
-  // the `const`s from everywhere that transitively does `impl` matching to get
-  // rid of this `mutable`.
+  // the `const`s from everywhere that transitively does `impl` matching to
+  // get rid of this `mutable`.
   mutable MatchingImplSet matching_impl_set_;
 
   // Information about a generic that has one or more template parameters.
